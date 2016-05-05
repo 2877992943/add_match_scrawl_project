@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+# encoding=utf-8
+
+
+
+
+
+
+
+
+
+from urllib.request import urlopen
+
+from bs4 import BeautifulSoup
+ 
+
+
+
+
+link0="http://www.pythonscraping.com/pages/page1.html"
+link1="http://www.tripmh.com/cityroad.html"
+
+
+"""
+#########link
+try:
+    html=urlopen(link1)
+    if html is None:
+        print 'url not exist'
+except HTTPError as e:
+    print e
+else:
+    print 1
+
+############
+"""
+
+"""
+html=urlopen(link0)
+bsObj=BeautifulSoup(html.read())
+print (bsObj)
+"""
+
+
+def getTitle(url):
+	try:
+		html=urlopen(url)
+	except HTTPError as e:
+		return None
+	
+	try:
+		bsObj=BeautifulSoup(html.read())
+		title=bsObj.body.h1
+		print '.....',bsObj
+	except AttributerError as e:
+		return None
+	return title
+
+
+if __name__=='__main__':
+	title=getTitle(link0)
+	if title==None:
+		print ('no title')
+	else:print (title)
+	
+
+
+
+
+
+
+
+
+
+
+
