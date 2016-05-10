@@ -104,10 +104,10 @@ def grab(filename):
     fr = open(filename)
     return pickle.load(fr)
 
-def complementDistrict(strI,briefNameDic):#list dict
+def complementDistrict(strI,briefNameDic):#list dict {bfname:fullname,..}
     import copy
     strList=copy.copy(strI)
-    for i in range(len(strI))[:2]:
+    for i in range(len(strI))[:]:
         bfname=strI[i]
         if bfname in briefNameDic.keys():
             strList[i]=briefNameDic[bfname]
@@ -140,15 +140,18 @@ if __name__=="__main__":
     fname=nameList[0]
 
     ####df[df.columns[0]].values[:]
-    df=pd.read_csv('../data/'+fname+'_segmented.csv',encoding='utf-8')
+    df=pd.read_csv('../data/'+fname+'_segmented_deepcut.csv',encoding='utf-8')
 
     ###
-    col=df.columns;print col #seg raw
-    segSerial=df[col[0]].values[:];print segSerial.shape
-    rawSerial=df[col[1]].values
-    segSerial_denoise=[]
+    col=df.columns;print col #fname_seg,fname_raw,fname_deepSeg
+    segSerial=df[fname+'_seg'].values[:];print segSerial.shape
+    rawSerial=df[fname+'_raw'].values
+    deepSegSerial=df[fname+'_deepSeg'].values
+    segSerial_denoise=[]#for denoise
+    deepSegSerial_denoise=[]#for generate index
     briefNameDic=get_briefDistrictName()
     for string in segSerial[:]: #'西四 路以'33728:33740
+        # seg_string
         #print 'raw',string
         #eachChar(string)
         #print 'u?',isinstance(string,unicode) #true
@@ -163,10 +166,29 @@ if __name__=="__main__":
 
         if len(strList)>0:segSerial_denoise.append(' '.join(strList) )
         else:segSerial_denoise.append('')
+
+    print 'done seg preprocess,now deep seg preprocess...'
+    ####################
+    for string in deepSegSerial[:]: #'西四 路以'33728:33740
+
+        #print 'raw',string
+        #eachChar(string)
+        #print 'u?',isinstance(string,unicode) #true
+        string=remove_noise_notsplit(string);#print '1', string ->string
+
+        strList=[st.strip(' ') for st in string.split(' ') if len(st.strip(' '))>=1];#print '2',strList#['abc','er'..]
+        strList=remove_repeat(strList)
+        strList=remove_digitString(strList);#print 'remove digit',' '.join(strI)  ->list
+        strList=remove_noise(strList);#print 'remove noise',' '.join(strI)  ->list
+        strList=complementDistrict(strList,briefNameDic) #->list
+        strList=remove_repeat(strList);#print 'unique',' '.join(strI)  ->list
+
+        if len(strList)>0:deepSegSerial_denoise.append(' '.join(strList) )
+        else:deepSegSerial_denoise.append('')
     ####
     print len(segSerial_denoise),len(rawSerial)
-    pd.DataFrame({fname:segSerial_denoise,fname+'_raw':rawSerial[:]}).\
-        to_csv('../data/'+fname+'_segmentDenoise.csv',index=False,encoding='utf-8')
+    pd.DataFrame({fname+'_seg':segSerial_denoise,fname+'_raw':rawSerial[:],fname+'_deepSeg':deepSegSerial_denoise}).\
+        to_csv('../data/'+fname+'_segmentDenoise_deep.csv',index=False,encoding='utf-8')
 
 
 

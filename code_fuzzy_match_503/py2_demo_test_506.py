@@ -50,11 +50,7 @@ def store(inputTree,filename):
     pickle.dump(inputTree,fw)
     fw.close()
 
-def score_notwell(pair):#[string,string]
-    from fuzzywuzzy import fuzz
-    score1=fuzz.token_sort_ratio(pair[0],pair[1])
-    score2=fuzz.partial_ratio(pair[0],pair[1])
-    return (score1+score2)/2.
+
 
 def calc_EuDistance(test,compare):#[1,d],[n,d]
     testMat=np.tile(test,(compare.shape[0],1));#[1,d]->[n,d]
@@ -122,7 +118,7 @@ def score(testStr,candList1):
     # total candidate
     ## idf
     vectorizer = TfidfVectorizer(ngram_range=(1,1),min_df=1)
-    corpus=totCandidate
+    corpus=totCandidate #after batches of candidate
     corpus.append(testStr)
     rst=vectorizer.fit_transform(corpus)
     rst=rst.toarray()
@@ -142,7 +138,7 @@ def score(testStr,candList1):
     for i in range(len(candidateList))[:]:
         print strUnique(candidateList[i]),'eu-dist',score[i]
     ############
-    return totIndArr
+    return totIndArr,dist
 
 
 def score_str_geo(testStr1,candList1,locArr,testArr):
@@ -304,21 +300,26 @@ def locatebyAddr(address, city=None):
     items = {'output': 'json', 'ak': mykey, 'address': address}
     if city:
         items['city'] = city
-
-    r = requests.get('http://api.map.baidu.com/geocoder/v2/', params=items)
+    try:
+        r = requests.get('http://api.map.baidu.com/geocoder/v2/', params=items)
+    except:
+        time.sleep(3)
+        r = requests.get('http://api.map.baidu.com/geocoder/v2/', params=items)
     dictResult = r.json()
     return dictResult['result']['location'] if not dictResult['status'] else None
 
 
 
 def getKiloMeter(testStr,candInd,candiArr): #seg_str
+    noGeoDist=10000
     totGeoInfoList=[]
     testLoc=locatebyAddr(testStr.replace(' ',''))#seg_string->noSeg_string
     #testLoc=[testLoc.values() if isinstance(testLoc,dict) else [0,0]][0];#print testLoc
     if isinstance(testLoc,dict)==False:
         testLoc=[0,0]
         print 'no loc for test address'
-        totGeoInfoList.append('test no geo')
+        #totGeoInfoList.append('test no geo')
+        totGeoInfoList=[ [candiArr[cind],noGeoDist] for cind in candInd]
     else:
         testLoc=testLoc.values()
         candDistList=[]
@@ -333,8 +334,8 @@ def getKiloMeter(testStr,candInd,candiArr): #seg_str
                 dist=getGeoDistance(np.array(testLoc).reshape((1,2)),np.array(locCand).reshape((1,2)) )
                 #####
                 print candStr_noSeg,locCand,dist[0]
-                candDistList.append([candiArr[ind],dist[0]])
-            else:candDistList.append([candiArr[ind],'no geo'])
+                candDistList.append([candiArr[ind],dist[0]])#[ [segStr,km],[]...]
+            else:candDistList.append([candiArr[ind],noGeoDist])
         totGeoInfoList=candDistList
     return totGeoInfoList
 
@@ -391,10 +392,10 @@ if __name__=="__main__":
     # query
     string=db_df['homeAdd_raw'].values;print string.shape
     string_seg=db_df['homeAdd'].values
-    rngList=random.sample( range(string_seg.shape[0]),10 )#472535#355126#random.choice(range(string_seg.shape[0])) #6
-    testDict={};within1kmTestDict={};strSimDict={}
+    rngList=random.sample( range(string_seg.shape[0]),100)#472535#355126#random.choice(range(string_seg.shape[0])) #6
+    testDict_km={};testDict_tfidf={};within1kmTestDict={};strEditSimDict={};
     for rng in rngList:
-        #rng=142636#451663 18632
+        #rng=115386#142636#451663 18632
         query=string[rng];print 'query no seg str',rng
         query_preprocess=string_seg[rng];print 'str seg',query_preprocess
         #ss='甘井子区 千 山路 义迎路 606'
@@ -453,7 +454,9 @@ if __name__=="__main__":
         #[爱玛, 客, 餐厅] ->[爱玛客 ,客餐厅]
         candList1,testStr1=addSingle2Bigram(candiArr,testStr);#print '111',testStr
         candList1,testStr1=reduceDistrictWeight(candList1,testStr1)
-        candInd=score(testStr1,candList1) #index of candiArr
+        candInd,dist_tfidf=score(testStr1,candList1) #index of candiArr
+        tfidfCloseList=[ [candiArr[candInd[i]],dist_tfidf[i]] for i in range(len(candInd)) ]#first column [strSeg,score]
+        testDict_tfidf[query_preprocess]=tfidfCloseList
         ##### after tfidf(string level), geo(location)
 
         ####### tfidf-> 1)geo ->kilometer within 1 km
@@ -461,23 +464,24 @@ if __name__=="__main__":
         #
         totGeoInfoList=getKiloMeter(testStr,candInd,candiArr) #str_seg,
         #
-        testDict[query_preprocess]=totGeoInfoList #first columns[ [candidate],[candidate]...] [cand]=[string_Seg,kilometer]
+        testDict_km[query_preprocess]=totGeoInfoList #second columns[ [candidate],[candidate]...] [cand]=[string_Seg,kilometer]
         #print 'end',query_preprocess,string_seg[rng]
-        closeCandiList=[cand for cand in totGeoInfoList if cand[1]<=1]
-        remoteCandiList=[cand for cand in totGeoInfoList if cand[1]>1]
-        within1kmTestDict[query_preprocess]=closeCandiList# second columns in final form
+        closeGeoCandiList=[cand for cand in totGeoInfoList if cand[1]<=1]
+        #remoteCandiList=[cand for cand in totGeoInfoList if cand[1]>1]
+        within1kmTestDict[query_preprocess]=closeGeoCandiList# third columns in final form
 
         ######## tfidf->2)string level partial match
         #testStr,candStrList=removeDoorNumber(testStr,candInd,candiArr) #seg_str
-        strSimList=editDist(remoteCandiList,testStr)
-        #[[candidate],[candidate]...] [cand]=[string_Seg,kilometer]->[str_seg,..]
-        strSimDict[query_preprocess]=strSimList
+        #strSimList=editDist(remoteCandiList,testStr)
+        closeStrList=[cand for cand in tfidfCloseList if cand[1]<=1]
+        #[[candidate],[candidate]...] [cand]=[string_Seg,score]->[str_seg,..]
+        strEditSimDict[query_preprocess]=closeStrList
 
 
 
 
     ############3
-    pd.DataFrame({'query':testDict.keys(),'return_allCand':testDict.values(),'1km':within1kmTestDict.values(),'stringIncluded':strSimDict.values()}).\
+    pd.DataFrame({'query':testDict_tfidf.keys(),'allCand_tfidf':testDict_tfidf.values(),'1km':within1kmTestDict.values(),'allCand_geo':testDict_km.values()}).\
         to_csv('../data/'+fname+'_returnQuery.csv',index=False,encoding='utf-8')
     ########
     end_time=time.time()

@@ -28,7 +28,7 @@ def build_index_1gram(segSerial):#'klf jkld jkl'
         if type(string)==unicode:#some float
             strList=string.split(' ');
             for word in strList:# non digit ,length>1
-                if word.isdigit()==False and len(word)>1:#remove single charactor
+                if word.isdigit()==False and len(word)>1:
                     if word not in word_dic:
                         word_dic[word]=[ind]
                     else:word_dic[word].append(ind)
@@ -115,40 +115,25 @@ if __name__=="__main__":
 
 
     ##########
-    # build index
-    df=pd.read_csv('../data/'+fname+'_segmentDenoise_deep.csv',encoding='utf-8')
+    # load index1gram
+    word_dict=grab('../data/'+fname+'_wordIndexDict1')
+    wordList=word_dict.keys();print 'len index',len(wordList)
+    longWord345List=[]
+    for word in wordList[:]:
+        #print len(word),word
+        if len(word)>=3:longWord345List.append(word)
 
-    #######3
-    col=df.columns;print col #seg raw
-    #segSerial=df[fname+'_seg'].values[:];print 'segSerial shape',segSerial.shape
-    rawSerial=df[fname+'_raw'].values
-    deepSegSerial=df[fname+'_deepSeg'].values
+
 
     #### 1-gram --no single char
-    word_dic=build_index_1gram(deepSegSerial)
-    store(word_dic,'../data/'+fname+'_wordIndexDict1_deep')
-    pd.DataFrame({'word':word_dic.keys(),'Index':word_dic.values()}).\
-        to_csv('../data/'+fname+'_wordIndex1.csv',index=False,encoding='utf-8')
+
+    #store(word_dic,'../data/'+fname+'_wordIndexDict1')
+    pd.DataFrame({'word':longWord345List}).\
+        to_csv('../data/'+fname+'_wordToBecut.csv',index=False,encoding='utf-8')
 
 
-    """
-    #### 2-gram -- especially single char
-    word_dic=build_index_2gram(segSerial[:])
-    store(word_dic,'../data/'+fname+'_wordIndexDict2')
-    pd.DataFrame({'word':word_dic.keys(),'Index':word_dic.values()}).\
-        to_csv('../data/'+fname+'_wordIndex2.csv',index=False,encoding='utf-8')
-    """
 
 
-    """
-    ####too slow pinyin
-    ####1-gram pinyin
-    word_dic=grab('../data/'+fname+'_wordIndexDict1');print len(word_dic)
-    word_dic_p=transform_pinyin(word_dic);
-    store(word_dic_p,'../data/'+fname+'_wordIndexDict1_pinyin')
-    pd.DataFrame({'word':word_dic_p.keys(),'Index':word_dic_p.values()}).\
-        to_csv('../data/'+fname+'_wordIndex1_pinyin.csv',index=False,encoding='utf-8')
-    """
 
 
     end_time=time.time()

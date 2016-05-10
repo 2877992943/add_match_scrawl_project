@@ -23,11 +23,14 @@ def store(inputTree,filename):
     fw.close()
 
 
-def cut_sentence(sentence):
+def cut_sentence_deep(sentence,deep):
 
     #sentence="北京市西城区西交民苑50号,上海市浦东区,上海浦东,上海浦东区,上海市浦东新区"
-    line=jieba.cut(sentence,cut_all=False)
-    rst= ' '.join(line)
+    if deep==True:
+        line=jieba.cut_for_search(sentence)#for generate index
+    else:line=jieba.cut(sentence)
+
+    rst=' '.join(line)
     #print rst,len(rst)
     #rst=rst.split(' ')
     #print rst
@@ -103,12 +106,13 @@ if __name__=="__main__":
     print '1',df.columns,df[df.columns[0]].shape
     #########3
     df=df[df.columns[0]].values[:]#array
-    segmented=[]
+    segmented=[];segmentedDeepList=[]
     for line in df[:]:#1153
         #print line
         ## complete name
         #line=complementDistrict(line,briefNameDic)#fail, use string_not_seg to get district,briefnameDistrict
-        seg=cut_sentence(line)
+        seg_deep=cut_sentence_deep(line,deep=True)
+        seg=cut_sentence_deep(line,deep=False)
         #print seg
         sz=[len(ch) for ch in seg.split(' ')];
         #print sz
@@ -119,13 +123,16 @@ if __name__=="__main__":
             newStr=' '.join(seg_removeSingle)
             #print newStr
             segmented.append(newStr)
-        else:segmented.append(' ')
+            segmentedDeepList.append(seg_deep)
+        else:
+            segmented.append(' ')
+            segmentedDeepList.append(' ')
 
     print 'seg',len(segmented)
 
     ###
-    pd.DataFrame({fname:segmented,fname+'_raw':df[:]}).\
-        to_csv('../data/'+fname+'_segmented.csv',index=False,encoding='utf-8')
+    pd.DataFrame({fname+'_seg':segmented,fname+'_raw':df[:],fname+'_deepSeg':segmentedDeepList}).\
+        to_csv('../data/'+fname+'_segmented_deepcut.csv',index=False,encoding='utf-8')
 
 
 

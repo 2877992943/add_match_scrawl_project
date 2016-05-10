@@ -73,30 +73,32 @@ if __name__=="__main__":
 
     ##########
     #
-    df=pd.read_csv('../data/'+fname+'_segmentDenoise.csv',encoding='utf-8')
+    df=pd.read_csv('../data/'+fname+'_segmentDenoise_deep.csv',encoding='utf-8')
 
     #######segment,raw
     col=df.columns;print col #seg raw
-    segSerial=df[col[0]].values[:];print 'segSerial shape',segSerial.shape #[n,]
-    rawSerial=df[col[1]].values
+    segSerial=df[fname+'_seg'].values[:];print 'segSerial shape',segSerial.shape
+    rawSerial=df[fname+'_raw'].values
+    deepSegSerial=df[fname+'_deepSeg'].values
 
 
     ############3
     #
     dataDic=grab('/home/yr/intellicredit/data/district_dict')
-    totStructureDic={}
-    i=0
-    for string in segSerial[:]:
+    totStructureDic={} # {seg_string:[beijing,haidian],...}
 
+    for i in range(deepSegSerial[:].shape[0]):
+        string=segSerial[i]
+        string_deep=deepSegSerial[i]
         #print '?',isinstance(string,unicode),isinstance(string,str) #true false
         if isinstance(string,unicode):
-            totStructureDic[string]=getStructure(string,dataDic)
-        i+=1
+            totStructureDic[string]=getStructure(string_deep,dataDic)
+
         if i%10000==0:print i
 
     #################
     # save
-    store(totStructureDic,'../data/'+fname+'_DistrictDict') #{segString:[beijing,haidian]
+    store(totStructureDic,'../data/'+fname+'_DistrictDict_deep') #{segString:[beijing,haidian],... }not deep seg string
     pd.DataFrame({fname:totStructureDic.keys(),'district':totStructureDic.values()}).\
         to_csv('../data/'+fname+'_districtStructureShow.csv',index=False,encoding='utf-8')
 

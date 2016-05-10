@@ -94,7 +94,7 @@ if __name__=="__main__":
     fname=nameList[0]
 
     ####
-    addDictToJieba()
+    #addDictToJieba()
 
     briefNameDic=get_briefDistrictName() #{briefName:name,...}
     ####

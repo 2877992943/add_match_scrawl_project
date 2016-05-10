@@ -50,11 +50,7 @@ def store(inputTree,filename):
     pickle.dump(inputTree,fw)
     fw.close()
 
-def score_notwell(pair):#[string,string]
-    from fuzzywuzzy import fuzz
-    score1=fuzz.token_sort_ratio(pair[0],pair[1])
-    score2=fuzz.partial_ratio(pair[0],pair[1])
-    return (score1+score2)/2.
+
 
 def calc_EuDistance(test,compare):#[1,d],[n,d]
     testMat=np.tile(test,(compare.shape[0],1));#[1,d]->[n,d]
@@ -79,7 +75,7 @@ def normalize(jingweiduArr):#[n,2]
     mat=mat/gap
     return mat
 
-def score(testStr,candList1):
+def score(testStr,candList1):#deepSeg
     batch_sz=1000
     from sklearn.feature_extraction.text import TfidfVectorizer
     totCandidate=[];totInd=[]
@@ -122,7 +118,7 @@ def score(testStr,candList1):
     # total candidate
     ## idf
     vectorizer = TfidfVectorizer(ngram_range=(1,1),min_df=1)
-    corpus=totCandidate
+    corpus=totCandidate #after batches of candidate
     corpus.append(testStr)
     rst=vectorizer.fit_transform(corpus)
     rst=rst.toarray()
@@ -142,50 +138,10 @@ def score(testStr,candList1):
     for i in range(len(candidateList))[:]:
         print strUnique(candidateList[i]),'eu-dist',score[i]
     ############
-    return totIndArr
+    return totIndArr,dist
 
 
-def score_str_geo(testStr1,candList1,locArr,testArr):
-    print 'score geo fn',testStr1,len(candList1),locArr.shape,testArr.shape
-    from sklearn.feature_extraction.text import TfidfVectorizer
-    # tf idf
-    vectorizer = TfidfVectorizer(ngram_range=(1,1),min_df=1)
-    corpus=candList1
-    corpus.append(testStr1)
-    rst=vectorizer.fit_transform(corpus)#the last one is testStr
-    rst=rst.toarray()
 
-    ################
-    # calculate geo distance
-    rst1=np.concatenate((locArr.reshape((-1,2)),testArr.reshape((1,2)) ),axis=0);#print 'geo',rst1.shape# [n,2] cand_Test geo
-    rst1=fill0withMean(rst1);print 'fill0 with mean',rst1
-    test=rst1[-1,:].reshape((1,-1))#[1,d]
-    compare=rst1[:-1,:] #[n,d]
-    dist_geo=calc_EuDistance(test,compare);print 'geo',dist_geo,dist_geo.shape #[n,]
-
-    ################
-    # calculate string distance
-    test=rst[-1,:].reshape((1,-1))#[1,d]
-    compare=rst[:-1,:] #[n,d]
-    dist_str=calc_EuDistance(test,compare);print 'string',dist_str,dist_str.shape
-    #####normalize
-    dist_str_geo=np.concatenate((dist_str.reshape((-1,1)),dist_geo.reshape((-1,1)) ),axis=1);
-    #dist_str_geo=normalize(dist_str_geo);print 'norm (0,1)',dist_str_geo
-    #print dist_str_geo.shape #[n,1]->[n,2]
-    #########
-    # combine 2 kinds of distance:string geo
-    theta=0.7
-    dist=dist_str_geo[:,0]*theta+(1-theta)*dist_str_geo[:,1];print 'combine by theta...',dist.shape,dist #[n,]
-
-    # pick up distance<=1.2
-    #distInd=np.where(dist<=1.2)[0]#row index
-    #dist=dist[distInd]
-    #corpus=[corpus[ij] for ij in distInd]
-    #
-    ranks=np.argsort(dist)#[:20]#index ,from smallScore->largeScore sort
-    #print ranks
-    for i in ranks:
-        print strUnique(candList1[i]),'eu-dist combine string + geo', dist[i]
 
 def fill0withMean(jingweiduArr):
     #print jingweiduArr
@@ -286,15 +242,18 @@ def reduceDistrictWeight(candList,testStr):
     return candList1,testStr
 
 
-def filter_conflict_district(testDistrictList,candiArr,structureDistrictDic):#['beijing','haidian']
-    candiListFiltered=[]
+def filter_conflict_district(testDistrictList,candiArr,candiArr_deep,structureDistrictDic):#['beijing','haidian']
+    candiListFiltered=[];candiListFiltered_deep=[]
+    ij=0
     for candStr in candiArr[:]:
         cand_districtList=structureDistrictDic[candStr]#[beijing,haidian]
         #print candStr,'|',cand_districtList[0],cand_districtList[1]
         if cand_districtList[0] in [testDistrictList[0],0]:
             if cand_districtList[1] in [testDistrictList[1],0]:
-                candiListFiltered.append(candStr);#print 'pass...'
-    return candiListFiltered
+                candiListFiltered_deep.append(candiArr_deep[ij]);#print 'pass...'
+                candiListFiltered.append(candStr)
+        ij+=1
+    return candiListFiltered,candiListFiltered_deep
 
 
 def locatebyAddr(address, city=None):
@@ -304,22 +263,27 @@ def locatebyAddr(address, city=None):
     items = {'output': 'json', 'ak': mykey, 'address': address}
     if city:
         items['city'] = city
-
-    r = requests.get('http://api.map.baidu.com/geocoder/v2/', params=items)
+    try:
+        r = requests.get('http://api.map.baidu.com/geocoder/v2/', params=items)
+    except:
+        time.sleep(3)
+        r = requests.get('http://api.map.baidu.com/geocoder/v2/', params=items)
     dictResult = r.json()
     return dictResult['result']['location'] if not dictResult['status'] else None
 
 
 
 def getKiloMeter(testStr,candInd,candiArr): #seg_str
+    noGeoDist=10000
     totGeoInfoList=[]
     testLoc=locatebyAddr(testStr.replace(' ',''))#seg_string->noSeg_string
     #testLoc=[testLoc.values() if isinstance(testLoc,dict) else [0,0]][0];#print testLoc
     if isinstance(testLoc,dict)==False:
         testLoc=[0,0]
         print 'no loc for test address'
-        totGeoInfoList.append('test no geo')
-    else:
+        #totGeoInfoList.append('test no geo')
+        totGeoInfoList=[ [candiArr[cind],noGeoDist] for cind in candInd]
+    else:#test address location exist
         testLoc=testLoc.values()
         candDistList=[]
         for ind in candInd:#after tfidf ind ,each candidate
@@ -327,15 +291,20 @@ def getKiloMeter(testStr,candInd,candiArr): #seg_str
             #print candiArr[ind]
             candStr_noSeg=candiArr[ind].replace(' ','')#'深圳市 宝安区'->'深圳市宝安区'
             loc=locatebyAddr(candStr_noSeg)
-            if isinstance(loc,dict):
+            if isinstance(loc,dict): #candidate str location exist
                 locCand=loc.values()
                 #print testLoc,np.array(testLoc),loc0,np.array(loc0)
                 dist=getGeoDistance(np.array(testLoc).reshape((1,2)),np.array(locCand).reshape((1,2)) )
                 #####
-                print candStr_noSeg,locCand,dist[0]
-                candDistList.append([candiArr[ind],dist[0]])
-            else:candDistList.append([candiArr[ind],'no geo'])
+                #print candStr_noSeg,locCand,dist[0]
+                candDistList.append([candiArr[ind],dist[0]])#[ [segStr,km],[]...]
+            else:candDistList.append([candiArr[ind],noGeoDist])
         totGeoInfoList=candDistList
+    ##############sort
+    tmpDict=dict(candDistList)
+    sortll=sorted(tmpDict.iteritems(),key=lambda asd:asd[1],reverse=False)#[ [noSegStr,num],,[]...]
+    for elem in sortll:
+        print elem[0],elem[1]
     return totGeoInfoList
 
 
@@ -356,16 +325,22 @@ def removeDoorNumber(testStr,candInd,candiArr):
     testStr=' '.join(testL)
     return testStr,candStrList
 
-def editDist(remoteCandiList,testStr):#[[cand],[cand],,,], [cand]=[str_seg,km] ,str_seg
+def score_editDist(testStr,candList):#segDeepstr  :count how many words are hit
+    print 'edit dist'
     simCandList=[]
     testL=testStr.split(' ')
-    for cand in remoteCandiList:
-        candL=cand[0].split(' ')#str->list
+    for cand in candList:
+        #print cand
+        candL=cand.split(' ')#str->list
         editScore1=sum([1 for s in candL if s in testL])/float(len(candL))
         editScore2=sum([1 for s in testL if s in candL])/float(len(testL))
-        if 1 in [editScore1,editScore2]:simCandList.append(cand[0])
-        elif testStr.replace(' ','') in cand[0].replace(' ','') or cand[0].replace(' ','') in testStr.replace(' ',''):
-            simCandList.append(cand[0])
+        if len(candL)>len(testL):lenScore=len(testL)/float(len(candL))
+        else:lenScore=len(candL)/float(len(testL))
+        #print editScore1,editScore2,lenScore,len(candL),len(testL)#,testL,candL
+        ########
+        simCandList.append([cand,1./(editScore1*editScore2*lenScore) ]) #[segDeepStr,score]
+
+
     return simCandList
 
 
@@ -381,31 +356,34 @@ if __name__=="__main__":
     print 'index...'
     ##########
     # load index ,load database ,load query
-    db_df=pd.read_csv('../data/'+fname+'_segmentDenoise.csv',encoding='utf-8')
+    db_df=pd.read_csv('../data/'+fname+'_segmentDenoise_deep.csv',encoding='utf-8')
     print db_df.columns #homeAdd', u'homeAdd_raw'
-    wordIndDic1=grab('../data/'+fname+'_wordIndexDict1')
-    wordIndDic2=grab('../data/'+fname+'_wordIndexDict2')
+    wordIndDic1=grab('../data/'+fname+'_wordIndexDict1_deep')
+    #wordIndDic2=grab('../data/'+fname+'_wordIndexDict2')
 
 
     ############
     # query
-    string=db_df['homeAdd_raw'].values;print string.shape
-    string_seg=db_df['homeAdd'].values
-    rngList=random.sample( range(string_seg.shape[0]),10 )#472535#355126#random.choice(range(string_seg.shape[0])) #6
-    testDict={};within1kmTestDict={};strSimDict={}
+    string=db_df[fname+'_raw'].values;print string.shape
+    string_seg=db_df[fname+'_seg'].values         #for geo search
+    string_deepSeg=db_df[fname+'_deepSeg'].values #for index search
+    rngList=random.sample( range(string_deepSeg.shape[0]),10)#472535#355126#random.choice(range(string_seg.shape[0])) #6
+    testDict_km={};testDict_tfidf={}#;within1kmTestDict={};strEditSimDict={};
+    testDict_str={}
     for rng in rngList:
-        #rng=142636#451663 18632
+        #rng=336812#115386#142636#451663 18632
         query=string[rng];print 'query no seg str',rng
-        query_preprocess=string_seg[rng];print 'str seg',query_preprocess
+        query_preprocess_deep=string_deepSeg[rng];print 'str seg deep',query_preprocess_deep
+        query_preprocess=string_seg[rng]
         #ss='甘井子区 千 山路 义迎路 606'
         #print np.where((string_seg==ss.decode('utf-8') ))
-        query_preprocessList=query_preprocess.split(' ')#list
+        query_preprocess_deepList=query_preprocess_deep.split(' ')#list
         #print query_preprocess
         ###########
         # get doc-ind1
 
         docInd1=[]
-        for word in query_preprocessList:
+        for word in query_preprocess_deepList:
             #print word
             if word in wordIndDic1:
                 indList1=wordIndDic1[word];
@@ -413,6 +391,7 @@ if __name__=="__main__":
         print 'docind',len(docInd1),len(set(docInd1))
 
 
+        """
         ################
         # get doc-ind2
         print '2gram...'
@@ -426,20 +405,22 @@ if __name__=="__main__":
                 indList2=wordIndDic2[word];
                 docInd2=docInd2+indList2
         print 'docind2',len(docInd2),len(set(docInd2))
-
+        """
 
         print 'remove conflict district12'
         ##############
         # remove conflict district beijing-hebei, chaoyang-haidian
-        structureDistrictDic=grab('../data/'+fname+'_DistrictDict')#{segString:[beijing,haidian],..}
+        structureDistrictDic=grab('../data/'+fname+'_DistrictDict_deep')#{segString:[beijing,haidian],..}not segDeepStr
         #
-        candiInd=list(set(docInd1+docInd2))
-        candiArr=string_seg[candiInd][:]; print 'candidate',candiArr.shape #[n,]
+        #candiInd=list(set(docInd1+docInd2))
+        candiInd=list(set(docInd1))
+        candiArr_deep=string_deepSeg[candiInd][:]; print 'candidate',candiArr_deep.shape #[n,]
+        candiArr=string_seg[candiInd]
         ##test district name
-        testStr=string_seg[rng];print 'test str seg',testStr
+        testStr=query_preprocess;print 'test str seg',testStr #segStr not deepSeg
         testDistrictList=structureDistrictDic[testStr];print testDistrictList[0],testDistrictList[1]#beijing,haidian
         ##candidate
-        candList=filter_conflict_district(testDistrictList,candiArr,structureDistrictDic) #segString
+        candList,candDeepList=filter_conflict_district(testDistrictList,candiArr,candiArr_deep,structureDistrictDic) #segDeepString
         print 'candidate',len(candList)
 
 
@@ -449,35 +430,45 @@ if __name__=="__main__":
         ###################
         # pair score :string-level-tfidf,geo-level
         candiArr=np.array(candList); #no bigram in string
+        candiArr_deep=np.array(candDeepList)
         #testStr=string_seg[rng];print testStr #segString
         #[爱玛, 客, 餐厅] ->[爱玛客 ,客餐厅]
-        candList1,testStr1=addSingle2Bigram(candiArr,testStr);#print '111',testStr
-        candList1,testStr1=reduceDistrictWeight(candList1,testStr1)
-        candInd=score(testStr1,candList1) #index of candiArr
+        #candList1,testStr1=addSingle2Bigram(candiArr,testStr);#print '111',testStr
+        candList1,testStr1=reduceDistrictWeight(candDeepList,query_preprocess_deep)
+        candInd,dist_tfidf=score(testStr1,candList1) #index of candiArr
+        tfidfCloseList=[ [candiArr_deep[candInd[i]],dist_tfidf[i]] for i in range(len(candInd)) ]#first column [strDeepSeg,score]
+        testDict_tfidf[query_preprocess]=tfidfCloseList
         ##### after tfidf(string level), geo(location)
 
-        ####### tfidf-> 1)geo ->kilometer within 1 km
+        #######
+        # geo ->kilometer within 1 km
         print 'geo level...'
         #
-        totGeoInfoList=getKiloMeter(testStr,candInd,candiArr) #str_seg,
+        totGeoInfoList=getKiloMeter(query_preprocess,candInd,candiArr) #str_seg, not deepSeg
         #
-        testDict[query_preprocess]=totGeoInfoList #first columns[ [candidate],[candidate]...] [cand]=[string_Seg,kilometer]
+        testDict_km[query_preprocess]=totGeoInfoList #second columns[ [candidate],[candidate]...] [cand]=[string_Seg,kilometer]
         #print 'end',query_preprocess,string_seg[rng]
-        closeCandiList=[cand for cand in totGeoInfoList if cand[1]<=1]
-        remoteCandiList=[cand for cand in totGeoInfoList if cand[1]>1]
-        within1kmTestDict[query_preprocess]=closeCandiList# second columns in final form
+        #closeGeoCandiList=[cand for cand in totGeoInfoList if cand[1]<=1]
+        #remoteCandiList=[cand for cand in totGeoInfoList if cand[1]>1]
+        #within1kmTestDict[query_preprocess]=closeGeoCandiList# third columns in final form
 
-        ######## tfidf->2)string level partial match
-        #testStr,candStrList=removeDoorNumber(testStr,candInd,candiArr) #seg_str
-        strSimList=editDist(remoteCandiList,testStr)
-        #[[candidate],[candidate]...] [cand]=[string_Seg,kilometer]->[str_seg,..]
-        strSimDict[query_preprocess]=strSimList
+        ########
+        # string level partial match
+        candScoreList=score_editDist(query_preprocess_deep,candiArr_deep[candInd])#deepSeg,->[ [segDeep,score],[]...]
+        #strCloseList=[ [candiArr_deep[candInd[i]],dist_str[i]] for i in range(len(candInd)) ]#first column [strDeepSeg,score]
+        testDict_str[query_preprocess]=candScoreList
+
+        #strSimList=editDist(remoteCandiList,testStr)
+        #closeStrList=[cand for cand in tfidfCloseList if cand[1]<=1]
+        #[[candidate],[candidate]...] [cand]=[string_Seg,score]->[str_seg,..]
+        #strEditSimDict[query_preprocess]=closeStrList
+
 
 
 
 
     ############3
-    pd.DataFrame({'query':testDict.keys(),'return_allCand':testDict.values(),'1km':within1kmTestDict.values(),'stringIncluded':strSimDict.values()}).\
+    pd.DataFrame({'query':testDict_tfidf.keys(),'allCand_tfidf':testDict_tfidf.values(),'allCand_geo':testDict_km.values(),'editdist':testDict_str.values()}).\
         to_csv('../data/'+fname+'_returnQuery.csv',index=False,encoding='utf-8')
     ########
     end_time=time.time()
