@@ -91,7 +91,7 @@ def eachChar(string):
         print is_chinese(char)
 
 
-def get_briefDistrictName():#1 level district
+def get_briefDistrictName():
     districtNameBrief={}
     dataDic=grab('/home/yr/intellicredit/data/district_dict')
     for level1,v1 in dataDic.items()[:]:
