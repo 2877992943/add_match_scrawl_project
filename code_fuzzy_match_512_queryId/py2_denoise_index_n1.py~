@@ -1,0 +1,177 @@
+#!/usr/bin/env python
+# encoding=utf-8
+
+
+"""segment,do not remove single word, use forward/backward_pair to match, do  keep len=1 word in sentence
+1)get district,city etc structure from address,
+2)remove noise like ( ) |first repeated word |number |appear in the end, not begaining of addresss
+
+denoise
+index_1:1-gram,hanzi
+"""
+
+#import sys;
+#reload(sys);
+#sys.setdefaultencoding('utf-8')
+
+import pandas as pd
+import chardet,re,jieba,time
+
+def build_index_1gram(segSerial):#'klf jkld jkl'
+    #############
+    # get unique word,build index
+    word_dic={};
+    #for string in segSerial[:1000]:#each doc
+    for ind in range(len(segSerial[:])):
+        string=segSerial[ind]
+
+        if type(string)==unicode:#some float
+            strList=string.split(' ');
+            for word in strList:# non digit ,length>1
+                if word.isdigit()==False and len(word)>1:
+                    if word not in word_dic:
+                        word_dic[word]=[ind]
+                    else:word_dic[word].append(ind)
+    #####
+    return word_dic
+
+
+def build_index_2gram(segSerial):
+    ###################################
+    def is2Numbers(word2):
+        d=[0 if w.isdigit() else 1 for w in word2 ]
+        if d==[0,0]:return True
+        else: return False
+    def hasSingle(word2):
+        sz=[len(w) for w in word2]
+        if 1 in sz:return True
+        else:return False
+    ###########################################
+    word_dic={};
+    #for string in segSerial[:1000]:#each doc
+    for ind in range(len(segSerial[:])):
+        string=segSerial[ind]
+        #print 'raw',string
+        if type(string)==unicode:#some float
+            strList=string.split(' ');# 'klj klj ewr'->[...]
+            #for word in strList:# non digit ,length>1
+            for wInd in range(len(strList))[1:]:
+                word2=(strList[wInd-1].strip(' '),strList[wInd].strip(' ') );#print word2
+                ##### word2=[x,xx] not [xx,xx]  #no [123,093]
+                if hasSingle(word2) and ''.join(word2).isdigit()==False:
+                    word2str=''.join(word2)
+                    if word2str not in word_dic:
+                        word_dic[word2str]=[ind]
+                    else:word_dic[word2str].append(ind)
+    return word_dic
+
+
+def grab(filename):
+    import pickle
+    fr = open(filename)
+    return pickle.load(fr)
+
+
+
+
+def load_allDistrict():
+    districtName=[]
+    dataDic=grab('/home/yr/intellicredit/data/district_dict')
+    for level1,v1 in dataDic.items()[:]:
+        if isinstance(v1,dict) and len(v1)==0:
+            address=level1.strip()
+            districtName.append(address)
+
+        else:
+            for level2,v2 in v1.items()[:]:
+                if isinstance(v2,dict) and len(v2)==0:
+
+                    address=level2.strip()
+                    districtName.append(address)
+
+
+                else:
+                    for level3,v3 in v2.items()[:]:
+                        if isinstance(v3,dict) and len(v3)==0:
+                            address=level3.strip()
+                            districtName.append(address)
+
+    return districtName
+
+def get_districtName():
+    districtName=[]
+    dataDic=grab('/home/yr/intellicredit/data/district_dict')
+    for level1,v1 in dataDic.items()[:]:
+        districtName.append(level1.strip(' '))
+    return districtName
+
+
+
+
+
+if __name__=="__main__":
+    start_time=time.time()
+
+    nameList=['homeAdd','workAdd','workname']
+    fname=nameList[0]
+
+
+
+    ##########
+    # build index
+    df=pd.read_csv('../data/'+fname+'_segmentDenoise.csv',encoding='utf-8')
+
+    #######3
+    col=df.columns;print col #seg raw
+    segSerial=df[col[0]].values[:];print 'segSerial shape',segSerial.shape
+    rawSerial=df[col[1]].values
+    #### 1-gram --no single char
+    word_dic=build_index_1gram(segSerial)
+    pd.DataFrame({'word':word_dic.keys(),'Index':word_dic.values()}).\
+        to_csv('../data/'+fname+'_wordIndex1.csv',index=False,encoding='utf-8')
+
+    #### 2-gram -- especially single char
+    word_dic=build_index_2gram(segSerial[:])
+    pd.DataFrame({'word':word_dic.keys(),'Index':word_dic.values()}).\
+        to_csv('../data/'+fname+'_wordIndex2.csv',index=False,encoding='utf-8')
+
+
+
+    """
+    ##############
+    # make beijing:[doc1 doc2],beijingshi:[doc1,doc2] the same thing, not raise the fuzzywuzzyScore, so drop it ,
+    df=pd.read_csv('../data/'+fname+'_wordIndex1.csv',encoding='utf-8')
+    print df.columns #Index,word
+    wordSerial=df['word'].values;print wordSerial.shape
+    ####get district name
+    districtName=get_districtName();print 'district',len(districtName),len(set(districtName))
+    districtName_brief=[]
+    for name in list(set(districtName))[:10]:
+        name=name.decode('utf-8')
+        districtName_brief.append(name[:-1])
+        #print name,name[:-1]
+    districtName_brief_dic=dict(zip(districtName,districtName_brief))
+    print districtName_brief_dic
+    """
+
+
+
+
+
+
+
+    end_time=time.time()
+    print 'time: %f minute'%((end_time-start_time)/float(60))
+
+
+
+
+
+
+
+
+
+
+
+
+
